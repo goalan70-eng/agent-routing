@@ -81,35 +81,64 @@ def parse_request(question, table):
     return AnalysisRequest(operation=operation, metric=metric, filters=filters, group_by=())
 
 
-def calculate(table, request):
+@dataclass(frozen=True)
+class Measure:
+    amount: Decimal
+    display: str
+    unit: str
+
+
+@dataclass(frozen=True)
+class Calculation:
+    table: Table
+    request: AnalysisRequest
+    rows: tuple[int, ...]
+    measure: Measure
+
+    @property
+    def label(self):
+        operation = {"count": "건수", "mean": "평균", "sum": "합계"}[self.request.operation]
+        return " ".join(filter(None, (self.request.metric, operation)))
+
+
+def calculate_result(table, request):
     if request.operation not in ("count", "sum", "mean"):
         raise ValueError("지원하는 연산은 건수·합계·평균입니다.")
     filters = [(table.columns.index(c), values) for c, values in request.filters.items()]
-    selected = [(n, row) for n, row in enumerate(table.rows, 1)
-                if all(row[i].strip() in values for i, values in filters)]
-    ids = [n for n, _ in selected]
+    ids = tuple(n for n, row in enumerate(table.rows, 1)
+                if all(row[i].strip() in values for i, values in filters))
+    return Calculation(table, request, ids, summarize_rows(table, request, ids))
+
+
+def calculate(table, request):
+    result = calculate_result(table, request)
+    return result.measure.display, list(result.rows)
+
+
+def summarize_rows(table, request, ids):
     if request.operation == "count":
-        return str(len(ids)), ids
-    if not selected:
+        return Measure(Decimal(len(ids)), str(len(ids)), "건")
+    if not ids:
         raise ValueError("조건과 일치하는 자료 행이 없습니다.")
     index = table.columns.index(request.metric)
     unit_cols = [i for i, c in enumerate(table.columns)
                  if c.casefold() in {"단위", "unit", request.metric.casefold() + "_unit", request.metric + "단위"}]
-    units = {row[i].strip() for _, row in selected for i in unit_cols}
+    units = {table.rows[n - 1][i].strip() for n in ids for i in unit_cols}
     if "" in units or len(units) > 1:
         raise ValueError("선택한 행의 단위가 비었거나 서로 다릅니다.")
     with localcontext() as ctx:
         ctx.prec = 64
         total = Decimal(0)
-        for n, row in selected:
-            raw = row[index].strip()
+        for n in ids:
+            raw = table.rows[n - 1][index].strip()
             if len(raw) > 26 or not re.fullmatch(r"[+-]?(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?", raw):
                 raise ValueError(f"자료 {n}행의 {request.metric} 값이 비었거나 숫자가 아닙니다.")
             total += Decimal(raw.replace(",", ""))
-        result = total if request.operation == "sum" else total / len(selected)
+        result = total if request.operation == "sum" else total / len(ids)
         value = format(result.normalize(), "f")
         if request.operation == "mean" and result.as_tuple().exponent < -6:
             rounded = result.quantize(Decimal("0.000001"))
             if rounded != result:
                 value = "약 " + format(rounded, "f")
-    return value + (" " + next(iter(units)) if units else ""), ids
+    unit = next(iter(units), "")
+    return Measure(result, value + (" " + unit if unit else ""), unit)
