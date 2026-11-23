@@ -1,0 +1,16 @@
+[
+  {
+    "agency": "NOAA Global Monitoring Laboratory",
+    "title": "마우나로아 대기 중 이산화탄소 농도",
+    "url": "https://gml.noaa.gov/ccgg/trends/data.html",
+    "description": "월평균을 포함한 관측 주기별 CSV 다운로드",
+    "keywords": ["이산화탄소", "co2", "carbon dioxide", "마우나로아", "noaa"]
+  },
+  {
+    "agency": "USGS",
+    "title": "지진 목록 검색",
+    "url": "https://earthquake.usgs.gov/earthquakes/search/",
+    "description": "기간·위치·규모로 검색하고 CSV 형식으로 결과 받기",
+    "keywords": ["지진", "earthquake", "earthquakes", "usgs"]
+  }
+]
